@@ -7,3 +7,6 @@ sudo apt-get install ambari-server
 sudo ambari-server setup
 
 sudo ambari-server start
+
+# Open up a web browser and go to 127.0.1.1:8080.
+# Log in with username admin and password admin and follow on-screen instructions.
