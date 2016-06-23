@@ -1,0 +1,9 @@
+# on master00
+
+sudo apt-key adv --recv-keys --keyserver keyserver.ubuntu.com B9733A7A07513CAD
+sudo apt-get update
+sudo apt-get install ambari-server
+
+sudo ambari-server setup
+
+ambari-server start
