@@ -1,8 +1,8 @@
-10.253.52.91  master00
-10.253.48.66  slave01
-10.253.51.11  slave02
-10.253.49.59  slave03
-10.253.52.69  slave04
-10.253.49.58  slave05
-10.253.49.60  slave06
-10.253.51.30  slave07
+10.253.52.91  master00.local master00
+10.253.48.66  slave01.local slave01
+10.253.51.11  slave02.local slave02
+10.253.49.59  slave03.local slave03
+10.253.52.69  slave04.local slave04
+10.253.49.58  slave05.local slave05
+10.253.49.60  slave06.local slave06
+10.253.51.30  slave07.local slave07
