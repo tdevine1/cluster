@@ -1,0 +1,15 @@
+sudo addgroup hadoop
+sudo adduser --ingroup hadoop hduser
+
+sudo visudo
+# User privilege specification
+hduser  ALL=(ALL) ALL
+
+sudo apt-get install openssh-server
+sudo apt-get install ssh
+
+su - hduser
+ssh-keygen -t rsa -P ""
+
+cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys
+ssh localhost
