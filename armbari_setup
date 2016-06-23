@@ -6,4 +6,4 @@ sudo apt-get install ambari-server
 
 sudo ambari-server setup
 
-ambari-server start
+sudo ambari-server start
