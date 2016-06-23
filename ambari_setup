@@ -1,4 +1,10 @@
+# on all
+sudo apt-get install ntp
+sudo service ntp start
+
 # on master00
+sudo apt-get remove --auto-remove apparmor
+sudo apt-get remove --auto-remove chrony
 
 sudo apt-key adv --recv-keys --keyserver keyserver.ubuntu.com B9733A7A07513CAD
 sudo apt-get update
