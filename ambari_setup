@@ -7,11 +7,17 @@ sudo apt-key adv --recv-keys --keyserver keyserver.ubuntu.com B9733A7A07513CAD
 sudo apt-get update
 
 sudo apt-get install ambari-agent
+sudo nano /etc/ambari-agent/conf/ambari-agent.ini
+
+[server]
+
+hostname=<your.ambari.server.hostname>
 sudo ambari-agent start
 
 # on master00
 sudo apt-get remove --auto-remove apparmor
 sudo apt-get remove --auto-remove chrony
+sudo apt-get install apache2
 
 sudo wget -nv http://public-repo-1.hortonworks.com/ambari/ubuntu14/2.x/updates/2.2.1.0/ambari.list -O /etc/apt/sources.list.d/ambari.list
 sudo apt-key adv --recv-keys --keyserver keyserver.ubuntu.com B9733A7A07513CAD
