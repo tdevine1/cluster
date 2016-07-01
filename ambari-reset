@@ -1,0 +1,10 @@
+SERVER:
+sudo ambari-server stop
+sudo ambari-server reset
+sudo apt-get clean all
+
+HOST:
+sudo python /usr/lib/python2.6/site-packages/ambari_agent/HostCleanup.py --silent
+
+SERVER:
+sudo ambari-server start
