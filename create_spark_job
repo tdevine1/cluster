@@ -1,0 +1,27 @@
+# spin up the spark cluster
+/usr/hdp/2.4.2.0-258/spark/sbin/start-all.sh
+
+# make directory structure for scala code
+mkdir -p [projectname]/src/main/scala
+
+# move into [projectname]
+cd [projectname]
+
+# make sbt file
+nano [projectname].sbt
+
+# copy info into file
+name := "[projectname]"
+ 
+version := "1.0"
+
+scalaVersion := "2.11.8"
+
+libraryDependencies += "org.apache.spark" %% "spark-core" % "1.6.1"
+# provide additional dependencies
+
+# package the code to make a runnable job
+sbt package
+
+# submit the job
+spark-submit --class "[mainclass]" --master spark://master.local:7077 target/scala-2.11/[projectmame]_2.11-1.0.jar 
