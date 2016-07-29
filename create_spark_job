@@ -24,4 +24,4 @@ libraryDependencies += "org.apache.spark" %% "spark-core" % "1.6.1"
 sbt package
 
 # submit the job
-spark-submit --class "[mainclass]" --master spark://master.local:7077 target/scala-2.11/[projectmame]_2.11-1.0.jar 
+spark-submit --class [main_class_name] --master yarn --deploy-mode cluster --driver-memory 4g --executor-memory 2g --executor-cores 3 --queue default [full_path_to_projectname]_2.11-1.0.jar 
