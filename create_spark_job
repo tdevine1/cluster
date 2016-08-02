@@ -15,7 +15,15 @@ version := "1.0"
 scalaVersion := "2.11.8"
 
 libraryDependencies += "org.apache.spark" %% "spark-core" % "1.6.1"
-# provide additional dependencies
+
+# make the eclipse empty project
+sbt eclipse
+
+# edit the project in eclipse, add external dependencies and then to repackage
+reload
+
+sbt reload
+sbt eclipse with-source=true
 
 # package the code to make a runnable job
 sbt package
