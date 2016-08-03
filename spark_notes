@@ -1,0 +1,20 @@
+Create Key-Value Pair RDDs from both raw datasets so they can take advantage of Spark KVPRDD built in functions. When joining,
+the kvps will be shuffled and compared until they find their matchs. This is a LOT of network traffic and overhead, which can
+be minimized.
+
+Make sure that both key-value pair RDDs have the same Partitioner, that way they are naturally colocated, eliminating unnecessary
+shuffling when performing the left outer join. They must be set to persist so they are not re-hashed on subsequent uses, eliminating the
+benefit of ordering them in the first place. Hash-partition will hash the keys and shuffle partitions with the same keys to the same
+workers from both data sets.
+
+When both RDDs have duplicate keys, the join can cause the size of the data to expand dramatically.
+Aggregate the large raw csv data RDDs by ID to make less pairs when the join is performed. Since there are many entries for both files
+having the same id. Use aggregate-by instead of group-by then aggregate-by to optimize by reducing steps.
+(id1, (data1,data2,...,dataN))
+
+left outer join the 2 RDDs by the keys to make:
+(id_1, ([cluster1], Some([data1],[data2],...,[dataN])))
+(id_1, ([cluster2], Some([data1],[data2],...,[dataN])))
+
+Unpersist raw files when they are no longer needed and block until they are removed to conserve memory.
+
