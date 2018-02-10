@@ -1,0 +1,12 @@
+sftp slave16
+put /etc/hosts
+bye
+
+ssh slave16
+sudo mv hosts /etc/hosts
+Hadoop16
+
+cat /etc/hosts
+sudo ambari-agent restart
+exit
+

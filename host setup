@@ -1,0 +1,45 @@
+# local slave
+sudo apt-get install openssh-server
+
+# remote master
+ssh slave-16@slave16
+sudo addgroup hadoop
+sudo adduser --ingroup hadoop hduser
+sudo usermod -aG sudo hduser
+exit
+ssh-copy-id slave16
+
+ssh slave16
+sudo apt-get -y install ntp
+Hadoop16
+sudo service ntp start
+sudo wget -nv http://public-repo-1.hortonworks.com/ambari/ubuntu14/2.x/updates/2.2.2.0/ambari.list -O /etc/apt/sources.list.d/ambari.list
+sudo apt-key adv --recv-keys --keyserver keyserver.ubuntu.com B9733A7A07513CAD
+sudo apt-get update
+sudo apt-get -y install ambari-agent
+
+sudo nano /etc/ambari-agent/conf/ambari-agent.ini
+
+## EDIT TO HAVE SERVER NAME
+#[server]
+#hostname=master00
+#url_port=8440
+#secured_url_port=8441
+
+sudo python /usr/lib/python2.6/site-packages/ambari_agent/HostCleanup.py --silent --skip=users
+
+sudo apt-get -y install hugepages
+sudo hugeadm --thp-never
+
+sudo ambari-agent start
+
+## MAKE SURE HOSTNAME MATCHES HOSTS
+sudo nano /etc/hostname
+hostname
+exit
+
+# ambari
+provide key: /home/hduser/.ssh/id_rsa
+ssh user account: hduser
+
+# ADD MANUALLY
