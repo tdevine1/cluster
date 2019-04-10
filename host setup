@@ -49,6 +49,10 @@ sudo apt install hugepages
 sudo hugeadm --thp-never
 sudo ambari-agent start
 
+exit
+
+# this should send you back to the master
+
 # ambari
 provide key: /home/hduser/.ssh/id_rsa
 ssh user account: hduser
