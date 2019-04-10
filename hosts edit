@@ -1,10 +1,10 @@
-sftp slave16
+sftp datanodeXX
 put /etc/hosts
 bye
 
-ssh slave16
+ssh datanodeXX
 sudo mv hosts /etc/hosts
-Hadoop16
+Hadoop19
 
 cat /etc/hosts
 sudo ambari-agent restart

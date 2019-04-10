@@ -1,3 +1,4 @@
+# on master
 sudo addgroup hadoop
 sudo adduser --ingroup hadoop hduser
 
@@ -5,8 +6,8 @@ sudo visudo
 # User privilege specification
 hduser  ALL=(ALL) ALL
 
-sudo apt-get install openssh-server
-sudo apt-get install ssh
+sudo apt install -y openssh-server
+sudo apt install -y ssh
 
 su - hduser
 ssh-keygen -t rsa -P ""
@@ -14,4 +15,4 @@ ssh-keygen -t rsa -P ""
 cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys
 ssh localhost
 
-ssh ssh-copy-id hduser@slave0x
+ssh ssh-copy-id hduser@datanodeXX
