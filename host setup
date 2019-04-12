@@ -1,3 +1,7 @@
+###############################################################################
+# FOR FRESH INSTALLS							      #
+###############################################################################
+
 # local slave
 sudo apt install -y openssh-server
 sudo apt install -y net-tools
@@ -53,8 +57,36 @@ exit
 
 # this should send you back to the master
 
-# ambari
-provide key: /home/hduser/.ssh/id_rsa
-ssh user account: hduser
 
-# ADD MANUALLY
+###############################################################################
+# FOR COMPUTERS WITH AN HDUSER ALREADY ON IT				      #
+###############################################################################
+
+# local slave
+sudo apt install -y net-tools
+
+ifconfig
+# write down IP address and note what the name should be, like datanodeXX
+
+sudo nano /etc/hostname
+# change hostname to the right number datanodeXX
+
+sudo reboot
+
+# from the remote master as user: hduser with password "Hadoop19" (use $su hduser)
+
+sudo nano /etc/hosts
+# edit the file to have the right IP address for the host datanodeXX
+
+ssh datanode@datanodeXX
+# enter password "DataSlave"
+
+ssh-copy-id datanodeXX
+yes
+
+ssh datanodeXX
+sudo apt update
+
+exit
+
+# this should send you back to the master
