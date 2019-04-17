@@ -26,14 +26,12 @@ sudo addgroup hadoop
 # enter password "DataSlave"
 
 sudo adduser --ingroup hadoop hduser
-sudo usermod -aG sudo hduser
-sudo passwd hduser
 # enter password "Hadoop19"
+sudo usermod -aG sudo hduser
 
 exit
 
 ssh-copy-id datanodeXX
-yes
 
 ssh datanodeXX
 sudo apt install -y ntp
@@ -44,12 +42,13 @@ export PATH=$PATH:/usr/lib/jvm/java-8-openjdk-amd64/bin/
 sudo wget -O /etc/apt/sources.list.d/ambari.list http://public-repo-1.hortonworks.com/ambari/ubuntu18/2.x/updates/2.7.3.0/ambari.list
 sudo apt-key adv --recv-keys --keyserver keyserver.ubuntu.com B9733A7A07513CAD
 sudo apt update
-sudo apt install ambari-agent
+sudo apt upgrade
+sudo apt install -y ambari-agent
 sudo nano /etc/ambari-agent/conf/ambari-agent.ini 
 
 # EDIT TO HAVE: hostname=master00
 
-sudo apt install hugepages 
+sudo apt install -y hugepages 
 sudo hugeadm --thp-never
 sudo ambari-agent start
 
@@ -78,14 +77,12 @@ sudo reboot
 sudo nano /etc/hosts
 # edit the file to have the right IP address for the host datanodeXX
 
-ssh datanode@datanodeXX
-# enter password "DataSlave"
-
 ssh-copy-id datanodeXX
-yes
 
 ssh datanodeXX
 sudo apt update
+sudo apt upgrade
+sudo ambari-agent start
 
 exit
 
