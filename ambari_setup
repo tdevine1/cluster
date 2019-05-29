@@ -1,12 +1,11 @@
 # on master00
-sudo apt-get remove --auto-remove apparmor
-sudo apt-get remove --auto-remove chrony
+sudo apt remove --auto-remove apparmor
+sudo apt remove --auto-remove chrony
 sudo apt install apache2
 
 sudo wget -O /etc/apt/sources.list.d/ambari.list http://public-repo-1.hortonworks.com/ambari/ubuntu18/2.x/updates/2.7.3.0/ambari.list
 sudo apt-key adv --recv-keys --keyserver keyserver.ubuntu.com B9733A7A07513CAD
 sudo apt update
-sudo apt install -y ambari-server
 sudo apt install -y ambari-server
 
 sudo ambari-server setup
