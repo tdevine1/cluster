@@ -5,7 +5,8 @@ sed -i -e '1isurvey,mjd,pointing,beam,clusterrank,merged,clustersize,centerDMspa
 
 # load files to cluster
 hadoop fs -put /home/hduser/data/palfa/palfa_001.csv /data/palfa/palfa_001.csv
+hadoop fs -put /home/hduser/data/palfa/palfa_001-clusters.csv /data/palfa/palfa_001-clusters.csv
 
 # run a spark job on the loaded data
-spark-submit --class DSPS --master yarn --deploy-mode cluster --driver-memory 7g --num-executors 7 --executor-memory 6144m --executor-cores 4 --conf spark.yarn.executor.memoryOverhead=1536 --queue default /home/hduser/code/DSPS/target/scala-2.10/dsps_2.10-1.0.jar /data/palfa/palfa_001-clusters.csv /data/palfa/palfa_001.csv /user/hduser/results/palfa/palfa_001
+spark-submit --class DSPS --master yarn --deploy-mode cluster --driver-memory 7g --num-executors 29 --executor-memory 3gm --executor-cores 2 --conf spark.yarn.executor.memoryOverhead=1536 --queue default /home/hduser/workspace-scala/DSPS/target/DSPS-0.0.1-SNAPSHOT.jar /data/palfa/palfa_001-clusters.csv /data/palfa/palfa_001.csv /user/hduser/results/palfa/palfa_001
 
