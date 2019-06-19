@@ -1,0 +1,21 @@
+sudo openssl genrsa -out master00.key 2048  
+sudo openssl req -new -key master00.key -out master00.csr  
+sudo openssl x509 -req -days 1095 -in master00.csr -signkey master00.key -out master00.crt 
+
+# The certificate you use must be PEM-encoded, not DER-encoded. If you attempt to use a DER-encoded certificate, you see the following error:
+# unable to load certificate 140109766494024:error:0906D06C:PEM routines:PEM_read_bio:no start line:pem_lib.c :698:Expecting: TRUSTED CERTIFICATE
+# You can convert a DER-encoded certificate to a PEM-encoded certificate using the following command:
+
+sudo openssl x509 -in master00.crt -inform der -outform pem -out master00.pem
+
+# place files in /var/www/.ssl/
+
+sudo ambari-server setup-security
+
+# Select 1 for Enable HTTPS for Ambari server.
+# Respond y to Do you want to configure HTTPS ?.
+# Select the port you want to use for SSL. The default port number is 8443.
+# Provide the complete path to your certificate file (master00.crt from above) and private key file (master00.key from above).
+# Provide the password for the private key.
+
+sudo ambari-server restart

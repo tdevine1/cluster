@@ -8,6 +8,44 @@ sudo apt-key adv --recv-keys --keyserver keyserver.ubuntu.com B9733A7A07513CAD
 sudo apt update
 sudo apt install -y ambari-server
 
+sudo apt install -y mysql-server mysql-client
+
+#############################################################################
+# For mysql setup
+#############################################################################
+# set default time zone
+sudo nano /etc/mysql/my.cnf
+
+# add this to the end
+[mysqld]
+default-time-zone='-4:00'
+
+sudo mysql restart
+
+# Create a user for Ambari and grant it permissions.
+
+mysql -u root -p
+
+CREATE USER 'ambari'@'%' IDENTIFIED BY 'Hadoop19';
+GRANT ALL PRIVILEGES ON *.* TO 'ambari'@'%';
+CREATE USER 'ambari'@'localhost' IDENTIFIED BY 'Hadoop19';
+GRANT ALL PRIVILEGES ON *.* TO 'ambari'@'localhost';
+CREATE USER 'ambari'@'master00.local' IDENTIFIED BY 'Hadoop19';
+GRANT ALL PRIVILEGES ON *.* TO 'ambari'@'master00.local';
+FLUSH PRIVILEGES;
+exit;
+
+mysql -u ambari -p
+
+CREATE DATABASE ambari;
+
+USE ambari;
+
+SOURCE /var/lib/ambari-server/resources/Ambari-DDL-MySQL-CREATE.sql;
+
+
+# When setting up the Ambari Server, select Advanced Database Configuration > Option [3] MySQL and enter the credentials you defined in Step 2. for user name, password and database name.
+
 sudo ambari-server setup
 
 sudo ambari-server start
