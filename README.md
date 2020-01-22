@@ -1,2 +1,3 @@
 # cluster
-This repo contains all files needed to configure a basic Hadoop cluster.
+doc - contains helpful documentation <br>
+code - contains eclipse projects for distributed computing
