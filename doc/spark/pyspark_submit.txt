@@ -1,0 +1,4 @@
+https://spark.apache.org/docs/latest/submitting-applications.html
+----------------
+For Python applications, simply pass a .py file in the place of <application-jar> instead of a JAR, 
+and add Python .zip, .egg or .py files to the search path with --py-files.
