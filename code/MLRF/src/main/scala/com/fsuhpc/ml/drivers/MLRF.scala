@@ -1,33 +1,34 @@
 
 /******************************************************************************
-* SupervisedMLRF.scala
+* MLRF.scala
 * @author zennisarix
 * This code implements a standard Spark mllib RandomForest classifier on the 
 * dataset provided with parameters passed via command-line arguments. The 
-* specified dataset must be fully labeled. The RandomForest model is trained on the
+* specified dataset must be fully labeled. The data is split 70%-30% training
+* and testing, respectively, and then the RandomForest model is trained on the
 * training data, used to make predictions on the testing data, and evaluated
 * for classification performance. The calculated metrics and model are sent
 * to the hdfs with the provided filename.
 ******************************************************************************/
-package edu.fsuhpc.driver
+package com.fsuhpc.ml.drivers
 
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
 import org.apache.spark.SparkConf
-import org.apache.spark.rdd.RDD
+import org.apache.spark.ml.Pipeline
 import org.apache.spark.mllib.tree.RandomForest
+import org.apache.spark.mllib.tree.model.RandomForestModel
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.evaluation.MulticlassMetrics
-import java.io.StringWriter
-import scala.collection.Seq
 
-object SupervisedMLRF { 
+import java.io.StringWriter
+
+object MLRF { 
   def main(args: Array[String]) {
     if (args.length < 7) {
       System.err.println("Must supply valid arguments: [numClasses] [numTrees] " +
-        "[impurity] [maxDepth] [maxBins] [input filename] [output filename] " +
-        "[percent labeled]")
+        "[impurity] [maxDepth] [maxBins] [input filename] [output filename]")
       System.exit(1)
     }
     // setup parameters from command line arguments
@@ -38,11 +39,14 @@ object SupervisedMLRF {
     val maxBins = args(4).toInt
     val inFile = args(5)
     val outName = args(6)
-    val outFile =  "hdfs://master00.local:8020/data/results/gbt350drift/" + outName
-    val percentLabeled = args(7).toDouble * 0.01
-         
+    val outFile =  "hdfs://master00.local:8020/data/results/palfa/" + outName
+    
+    // construct model path
+    val modelPath = "/data/models/MLRF.c-" + numClasses + ".t-" + numTrees +
+      ".d-" + maxDepth + ".b-" + maxBins + ".in-" + inFile + ".model"
+     
     // initialize spark 
-    val sparkConf = new SparkConf().setAppName("SupervisedMLRF")
+    val sparkConf = new SparkConf().setAppName("SparkMLRF")
     val sc = new SparkContext(sparkConf)
     
     // configure hdfs for output
@@ -50,10 +54,7 @@ object SupervisedMLRF {
     val hdfs = org.apache.hadoop.fs.FileSystem.get(
           new java.net.URI("hdfs://master00.local:8020"), hadoopConf
         )    
-    /**************************************************************************
-     * Read in data and prepare for sampling
-     *************************************************************************/
-    
+        
     // load data file from hdfs
     val text =  sc.textFile(inFile)
 
@@ -66,27 +67,22 @@ object SupervisedMLRF {
       
     // parse input text from csv to rdd
     val rdd = textNoHdr.map(line => line.split(","))
-   
-    /**************************************************************************
-     * Create training and testing sets.
-     *************************************************************************/
+    val data = rdd.map(row => 
+      new LabeledPoint(
+            row.last.toDouble, 
+            Vectors.dense(row.take(row.length - 1).map(str => str.toDouble))
+      )
+    )
     
     // Split the data into training and test sets (30% held out for testing)
     val startTimeSplit = System.nanoTime
-    val (trainingData, testingData) = stratifiedRandomSplit(rdd, percentLabeled)
-    
-    // remove labels from specified percent of the training data.
-    // NOTE: Since SparkMLRF cannot handle unlabeled data, "unlabeling" the
-    //  data is equivalent to removing it.
-//    val sslSplits = trainingData.randomSplit(Array(percentLabeled, 1 - percentLabeled))
-//    val trainingDataSSL = sslSplits(0)
-    
+    val splits = data.randomSplit(Array(0.7, 0.3))
+    val (trainingData, testData) = (splits(0), splits(1))
     trainingData.cache()
     val splitTime = (System.nanoTime - startTimeSplit) / 1e9d
     
     /**************************************************************************
-     * Train a Spark mllib RandomForest model on the labeled and unlabeled
-     *  training data.
+     * Train a Spark mllib RandomForest model on the training data.
      *************************************************************************/
     // Empty categoricalFeaturesInfo indicates all features are continuous.
     val categoricalFeaturesInfo = Map[Int, Int]()
@@ -101,14 +97,25 @@ object SupervisedMLRF {
     val model = RandomForest.trainClassifier(trainingData, numClasses, categoricalFeaturesInfo,
       numTrees, featureSubsetStrategy, impurity, maxDepth, maxBins)
     val trainTime = (System.nanoTime - startTimeTrain) / 1e9d
-        
+      
+    
+    // delete current existing file for this model
+//    val outputModel = "hdfs://master00.local:8020" + modelPath
+//    try {
+//        hdfs.delete(new org.apache.hadoop.fs.Path(outputModel), true)
+//    } catch { 
+//        case _ : Throwable => { println("ERROR: Unable to delete " + outputModel)} 
+//    }
+      
+    // Save model
+//    model.save(sc, modelPath)    
     
     /**************************************************************************
-     * Test the RandomForest model on the fully labeled testing data.
+     * Test the RandomForest model on the testing data.
      *************************************************************************/
     
     val startTimeTest = System.nanoTime
-    val labelAndPreds = testingData.map { point =>
+    val labelAndPreds = testData.map { point =>
       val prediction = model.predict(point.features)
       (point.label, prediction)
     }
@@ -165,15 +172,8 @@ object SupervisedMLRF {
     out.write(s"Weighted recall: ${metrics.weightedRecall}\n")
     out.write(s"Weighted F1 score: ${metrics.weightedFMeasure}\n")
     out.write(s"Weighted false positive rate: ${metrics.weightedFalsePositiveRate}\n")
-    
     // output trees
     out.write(s"\nLearned classification forest model:\n ${model.toDebugString}\n")
-    
-    // output training and testing data
-//    println("TRAINING DATA:\n")
-//    trainingData.collect().map(println)
-//    println("TESTING DATA:\n")
-//    testingData.collect().map(println)
         
     // delete current existing file for this model
     try {
@@ -187,35 +187,5 @@ object SupervisedMLRF {
     outRDD.saveAsTextFile(outFile)
     
     sc.stop()
-  }
-  
-  /**************************************************************************
-   * Splits a dataset into stratified training and validation sets. The size
-   * of the sets are user-determined. 
-   * 	rdd: the dataset to split, read in from a CSV
-   *  trainPercent: the size in percent of the training set
-   *  Returns: RDDs of LabeledPoints for the training and testing sets
-   *************************************************************************/
-  def stratifiedRandomSplit(
-      rdd: RDD[Array[String]],
-      trainPercent: Double):
-      (RDD[LabeledPoint], RDD[LabeledPoint]) = {
-    // map csv text to key value PairedRDD
-    val kvPairs = rdd.map(row => (
-        row.last.toInt, 
-        (row.take(row.length - 1).map(str => str.toDouble)).toIndexedSeq // must be immutable
-      )
-    )
-        
-    // set the size of the training set    
-    val fractions = Map(1 -> trainPercent, 0 -> trainPercent)
-    // get a stratified random subsample from the full set
-    val train = kvPairs.sampleByKeyExact(false, fractions, System.nanoTime())
-    // remove the elements of the training set from the full set
-    val test = kvPairs.subtract(train) 
-    (train.map(pair => new LabeledPoint(pair._1, 
-         Vectors.dense(pair._2.toArray))),
-     test.map(pair => new LabeledPoint(pair._1,
-         Vectors.dense(pair._2.toArray))))
   }
 }
