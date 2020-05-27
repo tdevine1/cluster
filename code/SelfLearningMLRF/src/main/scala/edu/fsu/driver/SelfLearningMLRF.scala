@@ -13,6 +13,7 @@ import org.apache.spark.SparkContext._
 import org.apache.spark.SparkConf
 import org.apache.spark.rdd.RDD
 import org.apache.spark.mllib.tree.RandomForest
+import org.apache.spark.mllib.tree.model.RandomForestModel
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.evaluation.MulticlassMetrics
@@ -33,11 +34,12 @@ object SelfLearningMLRF {
     val impurity = args(2)
     val maxDepth = args(3).toInt
     val maxBins = args(4).toInt
-    val inFile = args(5)
+    val survey = args(5)
+    val inFile = "/data/" + survey + "/" + survey + "_2class_labeled.csv"
     val outName = args(6)
-    val outFile =  "hdfs://master00.local:8020/data/results/palfa/" + outName
+    val outFile =  "hdfs://master00.local:8020/data/results/" + survey + "/" + outName
     val percentLabeled = args(7).toDouble * 0.01
-         
+    val MAX_ITERATIONS = 25
     // initialize spark 
     val sparkConf = new SparkConf().setAppName("SupervisedMLRF")
     val sc = new SparkContext(sparkConf)
@@ -46,7 +48,10 @@ object SelfLearningMLRF {
     val hadoopConf = new org.apache.hadoop.conf.Configuration()
     val hdfs = org.apache.hadoop.fs.FileSystem.get(
           new java.net.URI("hdfs://master00.local:8020"), hadoopConf
-        )    
+        )
+        
+    val out = new StringWriter()
+    
     /**************************************************************************
      * Read in data and prepare for sampling
      *************************************************************************/
@@ -61,8 +66,8 @@ object SelfLearningMLRF {
         iterator 
       } else iterator)
       
-    // parse input text from csv to rdd
-    val rdd = textNoHdr.map(line => line.split(","))
+    // parse input text from CSV to RDD and convert to KVPRDD
+    val kvprdd = transformCSV2KVPs(textNoHdr.map(line => line.split(",")))
    
     /**************************************************************************
      * Create training and testing sets.
@@ -70,43 +75,78 @@ object SelfLearningMLRF {
     
     // Split the data into training and test sets (30% held out for testing)
     val startTimeSplit = System.nanoTime
-    val (trainingData, testingData) = stratifiedRandomSplit(rdd, percentLabeled)
+    val (trainingKVP, testingKVP) = stratifiedRandomSplit(kvprdd, 0.7)
     
-    // remove labels from specified percent of the training data.
-    // NOTE: Since SparkMLRF cannot handle unlabeled data, "unlabeling" the
-    //  data is equivalent to removing it.
-//    val sslSplits = trainingData.randomSplit(Array(percentLabeled, 1 - percentLabeled))
-//    val trainingDataSSL = sslSplits(0)
-    
-    trainingData.cache()
+    // Create labeled and unlabeled sets.
+    val (labeledKVP, unlabeledKVP) = stratifiedRandomSplit(trainingKVP, percentLabeled)
     val splitTime = (System.nanoTime - startTimeSplit) / 1e9d
     
+    var labeledLP = transformKVPs2LabeledPoints(labeledKVP)
+    var unlabeledLP = transformKVPs2UnlabeledPoints(unlabeledKVP)
+    
     /**************************************************************************
-     * Train a Spark mllib RandomForest model on the labeled and unlabeled
-     *  training data.
-     *************************************************************************/
-    // Empty categoricalFeaturesInfo indicates all features are continuous.
+     * General Self-Learning Algorithm:
+     * 	while (unlabeled set is not empty and max iterations not reached)
+     * 		Train the base classifier on the labeled set
+     * 		for each element of unlabeled set
+     * 			label with confidence value
+     * 		sort newly labeled instances by confidence
+     * 		add the highest confidence instances to the labeled set
+     * 
+     **************************************************************************/
+    
     val categoricalFeaturesInfo = Map[Int, Int]()
-    // Let the algorithm choose.Number of features to consider for splits at each node.
-    // Supported values: "auto", "all", "sqrt", "log2", "onethird".
-    // If "auto" is set, this parameter is set based on numTrees:
-    //    if numTrees == 1, set to "all";
-    //    if numTrees is greater than 1 (forest) set to "sqrt".
-    val featureSubsetStrategy = "auto" 
-    
+    val featureSubsetStrategy = "auto"     
+    var iteration = 1
+    var noGoodPredictionsCount = 0
+    // Train the initial Spark mllib RandomForest model on the labeled training data.
+    var model = RandomForest.trainClassifier(labeledLP, numClasses,
+        categoricalFeaturesInfo, numTrees, featureSubsetStrategy, impurity,
+        maxDepth, maxBins)
     val startTimeTrain = System.nanoTime
-    val model = RandomForest.trainClassifier(trainingData, numClasses, categoricalFeaturesInfo,
-      numTrees, featureSubsetStrategy, impurity, maxDepth, maxBins)
+    while (noGoodPredictionsCount < 3 && iteration < MAX_ITERATIONS && unlabeledLP.count > 0)
+    {     
+      // Label the highest confidence predictions
+      var predictions = unlabeledLP.map { point =>
+        var (prediction, confidence) = model.predict(point.features)
+        if (confidence >= 0.98)
+          new LabeledPoint(prediction, point.features)
+        else
+          point
+      }
+      // If there are any good predictions, add them to the labeled set, remove
+      //   them from the unlabeled set
+      var goodPredictions = predictions.filter(_.label != -1)
+      
+      out.write("****************************************************\n")
+      out.write("*Iteration: " + iteration + "\n")
+      out.write("*Size of Labeled Set: " + labeledLP.count + "\n")
+      out.write("*Size of Unlabeled Set: " + unlabeledLP.count + "\n")
+      out.write("*Number of Good Preditions: " + goodPredictions.count + "\n")
+      
+      if (goodPredictions.count > 0)
+      {
+        noGoodPredictionsCount = 0
+        labeledLP = labeledLP ++ goodPredictions
+        unlabeledLP = predictions.filter(_.label == -1)
+        model = RandomForest.trainClassifier(labeledLP, numClasses,
+          categoricalFeaturesInfo, numTrees, featureSubsetStrategy, impurity,
+          maxDepth, maxBins)
+      }
+      else
+        noGoodPredictionsCount += 1
+      iteration += 1
+    }
     val trainTime = (System.nanoTime - startTimeTrain) / 1e9d
-        
     
     /**************************************************************************
-     * Test the RandomForest model on the fully labeled testing data.
+     * Test the model on the held-out testing data.
      *************************************************************************/
     
     val startTimeTest = System.nanoTime
-    val labelAndPreds = testingData.map { point =>
-      val prediction = model.predict(point.features)
+    val testingLP = transformKVPs2LabeledPoints(testingKVP)
+    val labelAndPreds = testingLP.map { point =>
+      val (prediction, confidence) = model.predict(point.features)
       (point.label, prediction)
     }
     val testTime = (System.nanoTime - startTimeTest) / 1e9d
@@ -114,13 +154,9 @@ object SelfLearningMLRF {
     /**************************************************************************
      * Metrics calculation for classification and execution performance
      *  evaluations.
-     *************************************************************************/
+     *************************************************************************/    
     
-    val out = new StringWriter()
-    
-    val metrics = new MulticlassMetrics(labelAndPreds)
-    
-    out.write(outName + "\n")
+    val metrics = new MulticlassMetrics(labelAndPreds)    
     out.write("EXECUTION PERFORMANCE:\n")
     out.write("SplittingTime=" + splitTime + "\n")
     out.write("TrainingTime=" + trainTime + "\n")
@@ -167,10 +203,10 @@ object SelfLearningMLRF {
     out.write(s"\nLearned classification forest model:\n ${model.toDebugString}\n")
     
     // output training and testing data
-//    println("TRAINING DATA:\n")
-//    trainingData.collect().map(println)
-//    println("TESTING DATA:\n")
-//    testingData.collect().map(println)
+    //    println("TRAINING DATA:\n")
+    //    trainingData.collect().map(println)
+    //    println("TESTING DATA:\n")
+    //    testingData.collect().map(println)
         
     // delete current existing file for this model
     try {
@@ -185,34 +221,62 @@ object SelfLearningMLRF {
     
     sc.stop()
   }
-  
   /**************************************************************************
-   * Splits a dataset into stratified training and validation sets. The size
-   * of the sets are user-determined. 
-   * 	rdd: the dataset to split, read in from a CSV
-   *  trainPercent: the size in percent of the training set
-   *  Returns: RDDs of LabeledPoints for the training and testing sets
+   * Converts an RDD of string arrays into an RDD of key-value pairs.
+   * rdd: the dataset to convert, read in from a CSV
+   * Returns: RDD of key-value pairs, with the key as the last value in a row
+   * 		and the value as everything before the key
+   **************************************************************************/
+  def transformCSV2KVPs(
+      rdd: RDD[Array[String]]):
+      RDD[(Int, scala.collection.immutable.IndexedSeq[Double])] = {
+    rdd.map(row => (
+        row.last.toInt, 
+        (row.take(row.length - 1).map(str => str.toDouble)).toIndexedSeq
+      )
+    )    
+  }
+  /**************************************************************************
+   * Converts an RDD of key-value pairs into an RDD of LabeledPoints.
+   * @param rdd the dataset to convert
+   * @return RDD of LabeledPoints, with the label as the key
+   **************************************************************************/
+  def transformKVPs2LabeledPoints(
+      kvPairs: RDD[(Int, scala.collection.immutable.IndexedSeq[Double])]):
+      RDD[LabeledPoint] = {        
+      kvPairs.map(pair => new LabeledPoint(pair._1, 
+         Vectors.dense(pair._2.toArray)))
+  }
+  /**************************************************************************
+   * Converts an RDD of key-value pairs into an RDD of LabeledPoints with all
+   * 	labels equal to -1.
+   * @param rdd the dataset to convert
+   * @return RDD of LabeledPoints, with the label as the key
+   **************************************************************************/
+  def transformKVPs2UnlabeledPoints(
+      kvPairs: RDD[(Int, scala.collection.immutable.IndexedSeq[Double])]):
+      RDD[LabeledPoint] = {        
+      kvPairs.map(pair => new LabeledPoint(-1, 
+         Vectors.dense(pair._2.toArray)))
+  }
+  /**************************************************************************
+   * Splits a key-value pair dataset into two stratified sets. The size of
+   * the sets are user-determined. 
+   * 	@param rdd the dataset to split
+   *  @param trainPercent the size in percent of the training set
+   *  @return two key-value paired RDDs of LabeledPoints
    *************************************************************************/
   def stratifiedRandomSplit(
-      rdd: RDD[Array[String]],
+      kvPairs: RDD[(Int, scala.collection.immutable.IndexedSeq[Double])],
       trainPercent: Double):
-      (RDD[LabeledPoint], RDD[LabeledPoint]) = {
-    // map csv text to key value PairedRDD
-    val kvPairs = rdd.map(row => (
-        row.last.toInt, 
-        (row.take(row.length - 1).map(str => str.toDouble)).toIndexedSeq // must be immutable
-      )
-    )
-        
+      (RDD[(Int, scala.collection.immutable.IndexedSeq[Double])],
+       RDD[(Int, scala.collection.immutable.IndexedSeq[Double])]) = {    
     // set the size of the training set    
     val fractions = Map(1 -> trainPercent, 0 -> trainPercent)
     // get a stratified random subsample from the full set
     val train = kvPairs.sampleByKeyExact(false, fractions, System.nanoTime())
     // remove the elements of the training set from the full set
-    val test = kvPairs.subtract(train) 
-    (train.map(pair => new LabeledPoint(pair._1, 
-         Vectors.dense(pair._2.toArray))),
-     test.map(pair => new LabeledPoint(pair._1,
-         Vectors.dense(pair._2.toArray))))
+    val test = kvPairs.subtract(train)
+    (train, test)
   }
 }

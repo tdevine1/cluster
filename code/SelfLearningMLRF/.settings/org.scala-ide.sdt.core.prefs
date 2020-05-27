@@ -1,3 +1,4 @@
+//src/main/java=main
 //src/main/resources=main
 //src/main/scala=main
 //src/test/java=tests
@@ -30,7 +31,7 @@ g=vars
 no-specialization=false
 nowarn=false
 optimise=false
-recompileOnMacroDef=true
+recompileOnMacroDef=false
 relationsDebug=false
 scala.compiler.additionalParams=\ -Xsource\:2.11 -Ymacro-expand\:none
 scala.compiler.installation=2.11
