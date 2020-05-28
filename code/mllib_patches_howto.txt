@@ -1,0 +1,22 @@
+Create a new maven project called "spark-mllib-patched_2.11"
+Setup pom to include:
+	- a build command to unpack spark-mllib_2.11 (see pom.xl)
+	- spark-mllib_2.11 as a dependency
+Create package structure for the files you want to patch
+Maven Build "spark-mllib-patched_2.11" once to unpack the class files from spark-mllib_2.11
+Eclipse Build to overwrite the class files you have patched.
+Maven build to package the unchanged and changed class files together in a jar
+Check the jar in Target for modification timestamp of the changed files
+	- should be today
+Install the jar to your local maven repository:
+	- 
+Check local maven repo for the new jar with changed class files
+	- in $HOME/.m2/repository/org/apache/spark/spark-mllib-patched_2.11/2.3.2
+Eclipse and Maven build the dependent project
+
+TO RUN
+Add to the spark-submit command:
+	--conf sparkdriver.userClassPathFirst=true
+	--conf sparkexecutor.userClassPathFirst=true
+	-jars [PATH TO spark-mllib-patched_2.11.jar]
+
