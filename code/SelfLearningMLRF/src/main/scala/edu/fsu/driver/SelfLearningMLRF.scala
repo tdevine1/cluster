@@ -39,7 +39,7 @@ object SelfLearningMLRF {
     val outName = args(6)
     val outFile =  "hdfs://master00.local:8020/data/results/" + survey + "/" + outName
     val percentLabeled = args(7).toDouble * 0.01
-    val MAX_ITERATIONS = 25
+    val MAX_ITERATIONS = 30
     // initialize spark 
     val sparkConf = new SparkConf().setAppName("SupervisedMLRF")
     val sc = new SparkContext(sparkConf)
@@ -51,7 +51,7 @@ object SelfLearningMLRF {
         )
         
     val out = new StringWriter()
-    
+  
     /**************************************************************************
      * Read in data and prepare for sampling
      *************************************************************************/
@@ -84,6 +84,9 @@ object SelfLearningMLRF {
     var labeledLP = transformKVPs2LabeledPoints(labeledKVP)
     var unlabeledLP = transformKVPs2UnlabeledPoints(unlabeledKVP)
     
+    labeledLP.persist()
+    unlabeledLP.persist()
+    
     /**************************************************************************
      * General Self-Learning Algorithm:
      * 	while (unlabeled set is not empty and max iterations not reached)
@@ -103,38 +106,61 @@ object SelfLearningMLRF {
     var model = RandomForest.trainClassifier(labeledLP, numClasses,
         categoricalFeaturesInfo, numTrees, featureSubsetStrategy, impurity,
         maxDepth, maxBins)
+    var confThreshold = 0.95
+    var unlabeledLPCount = 1L;
     val startTimeTrain = System.nanoTime
-    while (noGoodPredictionsCount < 3 && iteration < MAX_ITERATIONS && unlabeledLP.count > 0)
+    while (noGoodPredictionsCount < 3 && iteration <= MAX_ITERATIONS && unlabeledLPCount > 0)
     {     
       // Label the highest confidence predictions
-      var predictions = unlabeledLP.map { point =>
-        var (prediction, confidence) = model.predict(point.features)
-        if (confidence >= 0.98)
+      val predictions = unlabeledLP.map { point =>
+        val (prediction, confidence) = model.predict(point.features)
+        if (confidence >= confThreshold)
           new LabeledPoint(prediction, point.features)
         else
           point
       }
+      predictions.persist()
       // If there are any good predictions, add them to the labeled set, remove
       //   them from the unlabeled set
-      var goodPredictions = predictions.filter(_.label != -1)
+      val goodPredictions = predictions.filter(_.label != -1)
+      goodPredictions.persist()
       
+      // output all data
+//    try {
+//      hdfs.delete(new org.apache.hadoop.fs.Path("hdfs://master00.local:8020/data/results/" + survey + "/" + outName + "predictions" + iteration), true)
+//      predictions.saveAsTextFile("hdfs://master00.local:8020/data/results/" + survey + "/" + outName + "predictions" + iteration)
+//      hdfs.delete(new org.apache.hadoop.fs.Path("hdfs://master00.local:8020/data/results/" + survey + "/" + outName + "goodPredictions" + iteration), true)
+//      goodPredictions.saveAsTextFile("hdfs://master00.local:8020/data/results/" + survey + "/" + outName + "goodPredictions" + iteration)
+//      hdfs.delete(new org.apache.hadoop.fs.Path("hdfs://master00.local:8020/data/results/" + survey + "/" + outName + "labeledLP" + iteration), true)
+//      labeledLP.saveAsTextFile("hdfs://master00.local:8020/data/results/" + survey + "/" + outName + "labeledLP" + iteration)
+//      hdfs.delete(new org.apache.hadoop.fs.Path("hdfs://master00.local:8020/data/results/" + survey + "/" + outName + "unlabeledLP" + iteration), true)
+//      unlabeledLP.saveAsTextFile("hdfs://master00.local:8020/data/results/" + survey + "/" + outName + "unlabeledLP" + iteration)
+//    } catch { 
+//        case _ : Throwable => { println("ERROR: Unable to delete a file.")} 
+//    }
+      
+      unlabeledLPCount = unlabeledLP.count
+      val goodPredictionsCount = goodPredictions.count
       out.write("****************************************************\n")
       out.write("*Iteration: " + iteration + "\n")
       out.write("*Size of Labeled Set: " + labeledLP.count + "\n")
-      out.write("*Size of Unlabeled Set: " + unlabeledLP.count + "\n")
-      out.write("*Number of Good Preditions: " + goodPredictions.count + "\n")
-      
-      if (goodPredictions.count > 0)
-      {
+      out.write("*Size of Unlabeled Set: " + unlabeledLPCount + "\n")
+      out.write("*Number of Good Preditions: " + goodPredictionsCount + "\n")
+      if (goodPredictionsCount > 2)
         noGoodPredictionsCount = 0
-        labeledLP = labeledLP ++ goodPredictions
-        unlabeledLP = predictions.filter(_.label == -1)
-        model = RandomForest.trainClassifier(labeledLP, numClasses,
-          categoricalFeaturesInfo, numTrees, featureSubsetStrategy, impurity,
-          maxDepth, maxBins)
-      }
       else
         noGoodPredictionsCount += 1
+      if (goodPredictionsCount > 0)
+      {
+        labeledLP = labeledLP.union(goodPredictions)
+        unlabeledLP = predictions.filter(_.label == -1)
+        labeledLP.persist()
+        unlabeledLP.persist()
+      }
+        // Retrain the model
+      model = RandomForest.trainClassifier(labeledLP, numClasses,
+          categoricalFeaturesInfo, numTrees, featureSubsetStrategy, impurity,
+          maxDepth, maxBins)
       iteration += 1
     }
     val trainTime = (System.nanoTime - startTimeTrain) / 1e9d

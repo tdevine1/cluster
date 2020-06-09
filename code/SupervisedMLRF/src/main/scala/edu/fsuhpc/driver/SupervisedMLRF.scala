@@ -38,7 +38,7 @@ object SupervisedMLRF {
     val maxBins = args(4).toInt
     val inFile = args(5)
     val outName = args(6)
-    val outFile =  "hdfs://master00.local:8020/data/results/gbt350drift/" + outName
+    val outFile =  "hdfs://master00.local:8020/data/results/palfa/" + outName
     val percentLabeled = args(7).toDouble * 0.01
          
     // initialize spark 

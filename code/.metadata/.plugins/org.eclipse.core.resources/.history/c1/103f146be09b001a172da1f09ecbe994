@@ -1,0 +1,46 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.apache.spark</groupId>
+  <artifactId>spark-mllib_2.11_patched</artifactId>
+  <version>2.3.2</version>
+       
+  <build>  
+   <pluginManagement>
+    <plugins>
+      <plugin>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals>
+              <goal>unpack</goal>
+            </goals>
+            <configuration>
+              <artifactItems>
+                <artifactItem>
+                  <groupId>org.apache.spark</groupId>
+                  <artifactId>spark-mllib_2.11</artifactId>
+                  <outputDirectory>${project.build.directory}/classes</outputDirectory>
+                  <!-- excludes are probably not necessary -->
+                  <!-- <excludes>**/Foo.class,**/Bar.class</excludes> -->
+                </artifactItem>
+              </artifactItems>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+   </pluginManagement>
+  </build>
+
+
+  <dependencies>
+	
+	<dependency>
+	    <groupId>org.apache.spark</groupId>
+	    <artifactId>spark-mllib_2.11</artifactId>
+	    <version>2.3.2</version>
+      <optional>true</optional>
+	</dependency>
+	
+  </dependencies>
+</project>

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring accessors="true" comment="Delete 3 elements from project &apos;SparkMLRFSSL&apos;&#x0A;- Original project: &apos;SparkMLRFSSL&apos;&#x0A;- Original elements:&#x0A;     SparkMLRFSSL/src/main/resources&#x0A;     SparkMLRFSSL/src/test/java&#x0A;     SparkMLRFSSL/src/test/resources" description="Delete elements" element1="/src\/main\/resources" element2="/src\/test\/java" element3="/src\/test\/resources" elements="3" flags="589830" id="org.eclipse.jdt.ui.delete" resources="0" stamp="1582577756222" subPackages="false" version="1.0"/>
+</session>

@@ -1,0 +1,333 @@
+/******************************************************************************
+* CoDRIFt.scala
+* @author zennisarix
+* 
+******************************************************************************/
+package edu.fsu.driver
+
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkContext._
+import org.apache.spark.SparkConf
+import org.apache.spark.rdd.RDD
+import org.apache.spark.mllib.tree.RandomForest
+import org.apache.spark.mllib.tree.model.RandomForestModel
+import org.apache.spark.mllib.tree.model.DecisionTreeModel
+import org.apache.spark.mllib.regression.LabeledPoint
+import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.mllib.evaluation.MulticlassMetrics
+import java.io.StringWriter
+import scala.collection.Seq
+import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.Map
+import scala.collection.immutable.Map
+import org.apache.spark.HashPartitioner
+
+object CoDRIFt {
+  def main(args: Array[String]) {
+    if (args.length < 7) {
+      System.err.println("Must supply valid arguments: [numClasses] [numTrees] " +
+        "[impurity] [maxDepth] [maxBins] [input filename] [output filename] " +
+        "[percent labeled]")
+      System.exit(1)
+    }
+    // setup parameters from command line arguments
+    val numClasses = args(0).toInt
+    val numTrees = args(1).toInt 
+    val impurity = args(2)
+    val maxDepth = args(3).toInt
+    val maxBins = args(4).toInt
+    val survey = args(5)
+    val inFile = "/data/" + survey + "/" + survey + "_2class_labeled.csv"
+    val outName = args(6)
+    val outFile =  "hdfs://master00.local:8020/data/results/" + survey + "/" + outName
+    val percentLabeled = args(7).toDouble * 0.01
+    val MAX_ITERATIONS = 30
+    // initialize spark 
+    val sparkConf = new SparkConf().setAppName("SupervisedMLRF")
+    val sc = new SparkContext(sparkConf)
+    
+    // configure hdfs for output
+    val hadoopConf = new org.apache.hadoop.conf.Configuration()
+    val hdfs = org.apache.hadoop.fs.FileSystem.get(
+          new java.net.URI("hdfs://master00.local:8020"), hadoopConf
+        )
+        
+    val out = new StringWriter()
+    
+    val partitions = 20
+  
+    /**************************************************************************
+     * Read in data and prepare for sampling
+     *************************************************************************/
+    
+    // load data file from hdfs
+    val text =  sc.textFile(inFile)
+
+    // remove header line from input file
+    val textNoHdr = text.mapPartitionsWithIndex(
+      (i, iterator) => if (i == 0) iterator.drop(1) else iterator)
+      
+    // parse input text from CSV to RDD and convert to KVPRDD
+    val kvprdd = transformCSV2KVPs(textNoHdr.map(line => line.split(",")))
+   
+    /**************************************************************************
+     * Create training and testing sets.
+     *************************************************************************/
+    
+    // Split the data into training and test sets (30% held out for testing)
+    val startTimeSplit = System.nanoTime
+    val (modelbuildingKVP, testingKVP) = stratifiedRandomSplit(kvprdd, 0.7)
+    // Pull out another 30% for evaluation of models during training
+    val (trainingKVP, evaluationKVP) = stratifiedRandomSplit(modelbuildingKVP, 0.7)
+    // Create labeled and unlabeled sets.
+    val (labeledKVP, unlabeledKVP) = stratifiedRandomSplit(trainingKVP, percentLabeled)
+    val splitTime = (System.nanoTime - startTimeSplit) / 1e9d
+    val labeledLP = transformKVPs2LabeledPoints(labeledKVP)
+    val unlabeledLP = transformKVPs2UnlabeledPoints(unlabeledKVP)
+    val evaluationLP = transformKVPs2UnlabeledPoints(unlabeledKVP)
+    labeledLP.persist()
+    unlabeledLP.repartition(partitions)
+    unlabeledLP.persist()
+    evaluationLP.persist()
+    
+    /**************************************************************************
+     * 
+     * 
+     **************************************************************************/
+    var codrift = new ListBuffer[DecisionTreeModel]()
+    
+    // Train supervised models on the labeled data
+    var rfModels = trainRFs(labeledLP, partitions, numTrees, impurity, maxDepth,
+                           maxBins)
+    // use models to label unlabeled points by partition and add them to the augmented set
+    var augmented = unlabeledLP.mapPartitionsWithIndex{(index, iter) =>
+        val points = iter.toList
+        points.map{point =>
+            val (prediction, confidence) = rfModels(index).predict(point.features)
+            new LabeledPoint(prediction, point.features) 
+        }.iterator
+    }
+    augmented.persist()
+    // combine labeled and augmented sets
+    augmented = augmented.union(labeledLP)
+    augmented.persist()
+    // train new models on the augmented data
+    rfModels = trainRFs(augmented, partitions, numTrees, impurity, maxDepth,
+                           maxBins)
+    for (model <- rfModels)
+    {
+      var bestScore = 0.0
+      var bestTree = model.trees(0)
+      val trees = model.trees
+      for (tree <- trees)
+      {
+        val labelAndPreds = testingLP.map { point =>
+          val prediction = tree.predict(point.features)
+          (point.label, prediction)
+        }
+        val metrics = new MulticlassMetrics(labelAndPreds)
+        val score = metrics.fMeasure(1.0)
+        if (score > bestScore)
+        {
+          bestScore = score
+          bestTree = tree
+        }
+        codrift += bestTree
+      }
+      
+    }
+    var iteration = 1
+    var noGoodPredictionsCount = 0
+    // Train the initial Spark mllib RandomForest model on the labeled training data.
+
+    val startTimeTrain = System.nanoTime
+    
+    
+      
+      // output all data
+//    try {
+//      hdfs.delete(new org.apache.hadoop.fs.Path("hdfs://master00.local:8020/data/results/" + survey + "/" + outName + "predictions" + iteration), true)
+//      predictions.saveAsTextFile("hdfs://master00.local:8020/data/results/" + survey + "/" + outName + "predictions" + iteration)
+//      hdfs.delete(new org.apache.hadoop.fs.Path("hdfs://master00.local:8020/data/results/" + survey + "/" + outName + "goodPredictions" + iteration), true)
+//      goodPredictions.saveAsTextFile("hdfs://master00.local:8020/data/results/" + survey + "/" + outName + "goodPredictions" + iteration)
+//      hdfs.delete(new org.apache.hadoop.fs.Path("hdfs://master00.local:8020/data/results/" + survey + "/" + outName + "labeledLP" + iteration), true)
+//      labeledLP.saveAsTextFile("hdfs://master00.local:8020/data/results/" + survey + "/" + outName + "labeledLP" + iteration)
+//      hdfs.delete(new org.apache.hadoop.fs.Path("hdfs://master00.local:8020/data/results/" + survey + "/" + outName + "unlabeledLP" + iteration), true)
+//      unlabeledLP.saveAsTextFile("hdfs://master00.local:8020/data/results/" + survey + "/" + outName + "unlabeledLP" + iteration)
+//    } catch { 
+//        case _ : Throwable => { println("ERROR: Unable to delete a file.")} 
+//    }
+    val trainTime = (System.nanoTime - startTimeTrain) / 1e9d
+    
+    /**************************************************************************
+     * Test the model on the held-out testing data.
+     *************************************************************************/
+    
+    val startTimeTest = System.nanoTime
+    val testingLP = transformKVPs2LabeledPoints(testingKVP)
+    val labelAndPreds = testingLP.map { point =>
+      val votes = scala.collection.mutable.Map.empty[Int, Double]
+      for (tree <- codrift)
+      {
+        val prediction = tree.predict(point.features).toInt
+        votes(prediction) = votes.getOrElse(prediction, 0.0)
+      }
+      (point.label, votes.maxBy(_._2)._1.toDouble)
+    }
+    val testTime = (System.nanoTime - startTimeTest) / 1e9d
+    
+    /**************************************************************************
+     * Metrics calculation for classification and execution performance
+     *  evaluations.
+     *************************************************************************/    
+    
+    val metrics = new MulticlassMetrics(labelAndPreds)    
+    out.write("EXECUTION PERFORMANCE:\n")
+    out.write("SplittingTime=" + splitTime + "\n")
+    out.write("TrainingTime=" + trainTime + "\n")
+    out.write("TestingTime=" + testTime + "\n\n")
+    
+    out.write("CLASSIFICATION PERFORMANCE:\n")
+    // Confusion matrix
+    out.write("Confusion matrix (predicted classes are in columns):\n")
+    out.write(metrics.confusionMatrix + "\n")
+    
+    // Overall Statistics
+    val accuracy = metrics.accuracy
+    out.write("\nSummary Statistics:\n")
+    out.write(s"Accuracy = $accuracy\n")
+    
+    // Precision by label
+    val labels = metrics.labels
+    labels.foreach { l =>
+      out.write(s"Precision($l) = " + metrics.precision(l) + "\n")
+    }
+    
+    // Recall by label
+    labels.foreach { l =>
+      out.write(s"Recall($l) = " + metrics.recall(l) + "\n")
+    }
+    
+    // False positive rate by label
+    labels.foreach { l =>
+      out.write(s"FPR($l) = " + metrics.falsePositiveRate(l) + "\n")
+    }
+    
+    // F-measure by label
+    labels.foreach { l =>
+      out.write(s"F1-Score($l) = " + metrics.fMeasure(l) + "\n")
+    }
+    
+    // Weighted stats
+    out.write(s"\nWeighted precision: ${metrics.weightedPrecision}\n")
+    out.write(s"Weighted recall: ${metrics.weightedRecall}\n")
+    out.write(s"Weighted F1 score: ${metrics.weightedFMeasure}\n")
+    out.write(s"Weighted false positive rate: ${metrics.weightedFalsePositiveRate}\n")
+    
+    // output trees
+    out.write(s"\nLearned classification forest model:\n ${model.toDebugString}\n")
+    
+    // output training and testing data
+    //    println("TRAINING DATA:\n")
+    //    trainingData.collect().map(println)
+    //    println("TESTING DATA:\n")
+    //    testingData.collect().map(println)
+        
+    // delete current existing file for this model
+    try {
+        hdfs.delete(new org.apache.hadoop.fs.Path(outFile), true)
+    } catch { 
+        case _ : Throwable => { println("ERROR: Unable to delete " + outFile)} 
+    }
+    
+    // write string to file
+    val outRDD= sc.parallelize(Seq(out.toString()))
+    outRDD.saveAsTextFile(outFile)
+    
+    sc.stop()
+  }
+  /**************************************************************************
+   * Converts an RDD of string arrays into an RDD of key-value pairs.
+   * rdd: the dataset to convert, read in from a CSV
+   * Returns: RDD of key-value pairs, with the key as the last value in a row
+   * 		and the value as everything before the key
+   **************************************************************************/
+  def transformCSV2KVPs(
+      rdd: RDD[Array[String]]):
+      RDD[(Int, scala.collection.immutable.IndexedSeq[Double])] = {
+    rdd.map(row => (
+        row.last.toInt, 
+        (row.take(row.length - 1).map(str => str.toDouble)).toIndexedSeq
+      )
+    )    
+  }
+  /**************************************************************************
+   * Converts an RDD of key-value pairs into an RDD of LabeledPoints.
+   * @param rdd the dataset to convert
+   * @return RDD of LabeledPoints, with the label as the key
+   **************************************************************************/
+  def transformKVPs2LabeledPoints(
+      kvPairs: RDD[(Int, scala.collection.immutable.IndexedSeq[Double])]):
+      RDD[LabeledPoint] = {        
+      kvPairs.map(pair => new LabeledPoint(pair._1, 
+         Vectors.dense(pair._2.toArray)))
+  }
+  /**************************************************************************
+   * Converts an RDD of key-value pairs into an RDD of LabeledPoints with all
+   * 	labels equal to -1.
+   * @param rdd the dataset to convert
+   * @return RDD of LabeledPoints, with the label as the key
+   **************************************************************************/
+  def transformKVPs2UnlabeledPoints(
+      kvPairs: RDD[(Int, scala.collection.immutable.IndexedSeq[Double])]):
+      RDD[LabeledPoint] = {        
+      kvPairs.map(pair => new LabeledPoint(-1, 
+         Vectors.dense(pair._2.toArray)))
+  }
+  /**************************************************************************
+   * Splits a key-value pair dataset into two stratified sets. The size of
+   * the sets are user-determined. 
+   * 	@param rdd the dataset to split
+   *  @param trainPercent the size in percent of the training set
+   *  @return two key-value paired RDDs of LabeledPoints
+   *************************************************************************/
+  def stratifiedRandomSplit(
+      kvPairs: RDD[(Int, scala.collection.immutable.IndexedSeq[Double])],
+      trainPercent: Double):
+      (RDD[(Int, scala.collection.immutable.IndexedSeq[Double])],
+       RDD[(Int, scala.collection.immutable.IndexedSeq[Double])]) = {    
+    // set the size of the training set    
+    val fractions = Map(1 -> trainPercent, 0 -> trainPercent)
+    // get a stratified random subsample from the full set
+    val train = kvPairs.sampleByKeyExact(false, fractions, System.nanoTime())
+    // remove the elements of the training set from the full set
+    val test = kvPairs.subtract(train)
+    (train, test)
+  }  
+  /**************************************************************************
+   * . 
+   * 	@param labeled data set to 
+   *  @param numModels the number of models to create
+   *  @return two key-value paired RDDs of LabeledPoints
+   *************************************************************************/
+  def trainRFs(
+      labeled: RDD[LabeledPoint],
+      numModels: Integer,
+      numTrees: Integer,
+      impurity: String,
+      maxDepth: Integer,
+      maxBins: Integer):
+    ListBuffer[RandomForestModel] = {
+    var rfModels = new ListBuffer[RandomForestModel]()
+    for (i <- 1 to numModels)
+    {
+      val sample = labeled.sample(false, 1 / numModels)
+      val model = RandomForest.trainClassifier(sample, 2,
+          scala.collections.immutable.Map[Int, Int](), numTrees, "auto", impurity,
+          maxDepth, maxBins)
+      rfModels += model
+    }
+    rfModels
+  }
+  
+}

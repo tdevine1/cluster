@@ -17,7 +17,7 @@ Eclipse and Maven build the dependent project
 
 TO RUN
 Add to the spark-submit command:
-	--conf sparkdriver.userClassPathFirst=true
-	--conf sparkexecutor.userClassPathFirst=true
+	--conf spark.driver.userClassPathFirst=true
+	--conf spark.executor.userClassPathFirst=true
 	-jars [PATH TO spark-mllib-patched_2.11.jar]
 
