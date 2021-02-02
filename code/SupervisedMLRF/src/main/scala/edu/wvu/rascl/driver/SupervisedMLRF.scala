@@ -9,7 +9,7 @@
 * for classification performance. The calculated metrics and model are sent
 * to the hdfs with the provided filename.
 ******************************************************************************/
-package edu.fsuhpc.driver
+package edu.wvu.rascl.driver
 
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
