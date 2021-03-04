@@ -2,9 +2,9 @@ Download Eclipse Scala IDE
 Extract it and open Scala IDE
 Click on File -> New -> Project ->Maven -> Maven Project ->next
 Check option: Create a simple project(skip archetype selection)
-Provide group Id(edu.fsu) and artifact Id(ex- SelfLearningMLRF)
+Provide group Id(edu.wvu.rascl) and artifact Id(ex- dsps)
 Expand your project(Demo) and open pom.xml and add dependencies that match spark and scala versions on the cluster from https://mvnrepository.com/artifact/org.apache.spark in a new <dependencies> tag after <version>0.0.1-SNAPSHOT</version> in pom.xml, now save the pom.xml
 Right click on project -> Click on configure -> click on add scala nature
-Right click on project(Demo) -> Build Path ->Configure Build Path ->From top of panel , select libraries -> select proper scala library (2.11) and jre to match cluster 
+Right click on project(Demo) -> Build Path ->Configure Build Path ->From top of panel , select “libraries” -> select proper scala library (2.11) and jre to match cluster 
 Expand project and Right click on src/main/java and rename it to src/main/scala
-Right click on src/main/scala and create package with package name= group Id.artifact Id(edu.fsu.SelfLearningMLRF)
+Right click on src/main/scala and create package with package name= group Id.artifact Id(edu.wvu.rascl.dsps)
